@@ -6,14 +6,12 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
 import google.generativeai as genai
 
-# Logging
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
 
-# Environment Variables
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 ADMIN_ID = os.getenv("ADMIN_CHAT_ID")
@@ -27,7 +25,6 @@ else:
 user_languages = {}
 user_states = {}
 
-# Rate Limiter
 user_message_times = defaultdict(list)
 RATE_LIMIT_COUNT = 5
 RATE_LIMIT_WINDOW = 10 
@@ -42,7 +39,6 @@ def is_rate_limited(user_id: int) -> bool:
     user_message_times[user_id].append(current_time)
     return False
 
-# Keyboards
 def get_main_keyboard(lang="en"):
     if lang == "ar":
         keyboard = [
@@ -75,7 +71,6 @@ def get_language_keyboard():
     ]
     return InlineKeyboardMarkup(keyboard)
 
-# Handlers
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user_states[user_id] = None
@@ -134,7 +129,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user_text = update.message.text
 
-    # Forwarding message to dev
     if user_states.get(user_id) == "awaiting_contact":
         user_states[user_id] = None
         if ADMIN_ID:
@@ -149,18 +143,23 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(msg, parse_mode="Markdown")
         return
 
-    # AI Processing
     if not model:
         await update.message.reply_text("⚠️ Gemini API Key is missing in Railway variables.")
         return
 
     try:
-        prompt = f"Respond accurately to the user question in the language code '{lang}'.\nUser Question: {user_text}"
-        response = model.generate_content(prompt)
+        response = model.generate_content(f"Respond in '{lang}' language to: {user_text}")
         await update.message.reply_text(response.text)
     except Exception as e:
-        logger.error(f"Gemini API Error: {e}")
-        await update.message.reply_text("⚠️ An error occurred while generating the AI response.")
+        logger.error(f"Gemini Error: {e}")
+        try:
+            # Fallback to gemini-pro if 1.5-flash fails
+            alt_model = genai.GenerativeModel('gemini-pro')
+            resp = alt_model.generate_content(user_text)
+            await update.message.reply_text(resp.text)
+        except Exception as err:
+            logger.error(f"Fallback Error: {err}")
+            await update.message.reply_text(f"⚠️ Error: {str(e)}")
 
 def main():
     if not TELEGRAM_TOKEN:
