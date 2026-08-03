@@ -1,10 +1,14 @@
 import os
 import time
 import logging
+import warnings
 from collections import defaultdict
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
-from google import genai
+import google.generativeai as genai
+
+# التجاهل الكامل للرسائل التحذيرية الخاصة بالمكتبة القديمة
+warnings.filterwarnings("ignore")
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -16,7 +20,8 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN") or os.getenv("TELEGRAM_TOKEN")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 ADMIN_ID = os.getenv("ADMIN_CHAT_ID")
 
-client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
+if GEMINI_API_KEY:
+    genai.configure(api_key=GEMINI_API_KEY)
 
 user_languages = {}
 user_states = {}
@@ -139,33 +144,22 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(msg, parse_mode="Markdown")
         return
 
-    if not client:
+    if not GEMINI_API_KEY:
         await update.message.reply_text("⚠️ GEMINI_API_KEY is missing in Railway variables.")
         return
 
-    # أسماء الموديلات الصحيحة المتاحة للـ API
-    models_to_try = ['gemini-2.5-flash', 'gemini-1.5-flash-latest', 'gemini-1.5-pro']
-    response_text = None
-    last_error = None
-
-    for model_name in models_to_try:
-        try:
-            res = client.models.generate_content(
-                model=model_name,
-                contents=f"Respond in '{lang}' language to: {user_text}"
-            )
-            if res and res.text:
-                response_text = res.text
-                break
-        except Exception as e:
-            last_error = e
-            continue
-
-    if response_text:
-        await update.message.reply_text(response_text)
-    else:
-        logger.error(f"Gemini Error: {last_error}")
-        await update.message.reply_text(f"⚠️ Gemini Error: {str(last_error)}")
+    try:
+        # استخدام الموديل المباشر المتاح بدون أخطاء 404
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        response = model.generate_content(f"Respond in '{lang}' language to: {user_text}")
+        
+        if response and response.text:
+            await update.message.reply_text(response.text)
+        else:
+            await update.message.reply_text("⚠️ Empty response from Gemini.")
+    except Exception as e:
+        logger.error(f"Gemini Error: {e}")
+        await update.message.reply_text(f"⚠️ Gemini Error: {str(e)}")
 
 def main():
     if not TELEGRAM_TOKEN:
