@@ -4,7 +4,7 @@ import logging
 from collections import defaultdict
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
-import google.generativeai as genai
+from google import genai
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -16,11 +16,7 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 ADMIN_ID = os.getenv("ADMIN_CHAT_ID")
 
-if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
-    model = genai.GenerativeModel('gemini-1.5-flash')
-else:
-    model = None
+client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
 
 user_languages = {}
 user_states = {}
@@ -143,23 +139,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(msg, parse_mode="Markdown")
         return
 
-    if not model:
-        await update.message.reply_text("⚠️ Gemini API Key is missing in Railway variables.")
+    if not client:
+        await update.message.reply_text("⚠️ GEMINI_API_KEY is missing in Railway variables.")
         return
 
     try:
-        response = model.generate_content(f"Respond in '{lang}' language to: {user_text}")
+        response = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=f"Respond in '{lang}' language to: {user_text}"
+        )
         await update.message.reply_text(response.text)
     except Exception as e:
         logger.error(f"Gemini Error: {e}")
-        try:
-            # Fallback to gemini-pro if 1.5-flash fails
-            alt_model = genai.GenerativeModel('gemini-pro')
-            resp = alt_model.generate_content(user_text)
-            await update.message.reply_text(resp.text)
-        except Exception as err:
-            logger.error(f"Fallback Error: {err}")
-            await update.message.reply_text(f"⚠️ Error: {str(e)}")
+        await update.message.reply_text("⚠️ An error occurred while generating the AI response.")
 
 def main():
     if not TELEGRAM_TOKEN:
