@@ -145,13 +145,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         response = client.models.generate_content(
-            model='gemini-2.5-flash',
+            model='gemini-1.5-flash',
             contents=f"Respond in '{lang}' language to: {user_text}"
         )
-        await update.message.reply_text(response.text)
+        if response and response.text:
+            await update.message.reply_text(response.text)
+        else:
+            await update.message.reply_text("⚠️ Empty response received from Gemini.")
     except Exception as e:
         logger.error(f"Gemini Error: {e}")
-        await update.message.reply_text("⚠️ An error occurred while generating the AI response.")
+        await update.message.reply_text(f"⚠️ Gemini Error: {str(e)}")
 
 def main():
     if not TELEGRAM_TOKEN:
