@@ -143,18 +143,29 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⚠️ GEMINI_API_KEY is missing in Railway variables.")
         return
 
-    try:
-        response = client.models.generate_content(
-            model='gemini-1.5-flash',
-            contents=f"Respond in '{lang}' language to: {user_text}"
-        )
-        if response and response.text:
-            await update.message.reply_text(response.text)
-        else:
-            await update.message.reply_text("⚠️ Empty response received from Gemini.")
-    except Exception as e:
-        logger.error(f"Gemini Error: {e}")
-        await update.message.reply_text(f"⚠️ Gemini Error: {str(e)}")
+    # Try models supported by google-genai library
+    models_to_try = ['gemini-2.5-flash', 'gemini-2.0-flash']
+    response_text = None
+    last_error = None
+
+    for model_name in models_to_try:
+        try:
+            res = client.models.generate_content(
+                model=model_name,
+                contents=f"Respond in '{lang}' language to: {user_text}"
+            )
+            if res and res.text:
+                response_text = res.text
+                break
+        except Exception as e:
+            last_error = e
+            continue
+
+    if response_text:
+        await update.message.reply_text(response_text)
+    else:
+        logger.error(f"Gemini Error: {last_error}")
+        await update.message.reply_text(f"⚠️ Gemini Error: {str(last_error)}")
 
 def main():
     if not TELEGRAM_TOKEN:
