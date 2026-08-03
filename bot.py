@@ -4,7 +4,7 @@ import logging
 from collections import defaultdict
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
-from google import genai
+from g4f.client import Client
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -13,10 +13,10 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN") or os.getenv("TELEGRAM_TOKEN")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 ADMIN_ID = os.getenv("ADMIN_CHAT_ID")
 
-client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
+# مش محتاجين أي API Key خالص
+g4f_client = Client()
 
 user_languages = {}
 user_states = {}
@@ -139,33 +139,20 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(msg, parse_mode="Markdown")
         return
 
-    if not client:
-        await update.message.reply_text("⚠️ GEMINI_API_KEY is missing in Railway variables.")
-        return
-
-    # تجربة النماذج المعتمدة بالأولوية
-    target_models = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash']
-    response_text = None
-    last_err = None
-
-    for model_id in target_models:
-        try:
-            res = client.models.generate_content(
-                model=model_id,
-                contents=f"Respond in '{lang}' language to: {user_text}"
-            )
-            if res and res.text:
-                response_text = res.text
-                break
-        except Exception as e:
-            last_err = e
-            continue
-
-    if response_text:
-        await update.message.reply_text(response_text)
-    else:
-        logger.error(f"Gemini Error: {last_err}")
-        await update.message.reply_text(f"⚠️ Gemini Error: {str(last_err)}")
+    # استخدام الذكاء الاصطناعي المجاني بدون API Keys
+    try:
+        response = g4f_client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": f"Respond in '{lang}' language: {user_text}"}],
+        )
+        reply = response.choices[0].message.content
+        if reply:
+            await update.message.reply_text(reply)
+        else:
+            await update.message.reply_text("⚠️ No response generated.")
+    except Exception as e:
+        logger.error(f"AI Error: {e}")
+        await update.message.reply_text("⚠️ Service temporarily busy, please try again.")
 
 def main():
     if not TELEGRAM_TOKEN:
