@@ -15,11 +15,12 @@ logger = logging.getLogger(__name__)
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN") or os.getenv("TELEGRAM_TOKEN")
 ADMIN_ID = os.getenv("ADMIN_CHAT_ID")
 
-# مش محتاجين أي API Key خالص
 g4f_client = Client()
 
 user_languages = {}
 user_states = {}
+# ذاكرة المحادثة لكل مستخدم (تخزن أخر 10 رسائل لعدم استهلاك الذاكرة)
+user_histories = defaultdict(list)
 
 user_message_times = defaultdict(list)
 RATE_LIMIT_COUNT = 5
@@ -70,6 +71,7 @@ def get_language_keyboard():
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user_states[user_id] = None
+    user_histories[user_id] = [] # تفريغ السجل عند البداية
     lang = user_languages.get(user_id, "en")
     
     welcome_messages = {
@@ -106,7 +108,8 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     elif query.data == "reset":
         user_states[user_id] = None
-        msg = "🔄 **تم إعادة ضبط سياق المحادثة!**" if lang == "ar" else "🔄 **Chat context reset!**"
+        user_histories[user_id] = [] # مسح سياق الذاكرة فعلياً عند ضغط الزرار
+        msg = "🔄 **تم مسح ذاكرة المحادثة وإعادة الضبط بنجاح!**" if lang == "ar" else "🔄 **Chat memory cleared and reset successfully!**"
     elif query.data == "about":
         msg = "ℹ️ **Elnemer AI Bot v2.0**"
     elif query.data == "language":
@@ -139,14 +142,27 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(msg, parse_mode="Markdown")
         return
 
-    # استخدام الذكاء الاصطناعي المجاني بدون API Keys
+    # إضافة رسالة المستخدم إلى السجل
+    user_histories[user_id].append({"role": "user", "content": user_text})
+    
+    # الحفاظ على آخر 10 رسائل فقط لسرعة الأداء
+    if len(user_histories[user_id]) > 10:
+        user_histories[user_id] = user_histories[user_id][-10:]
+
+    # بناء قائمة الرسائل شاملاً التعليمات والسياق الكامل
+    messages = [
+        {"role": "system", "content": f"You are a helpful AI assistant. Always respond in '{lang}' language."}
+    ] + user_histories[user_id]
+
     try:
         response = g4f_client.chat.completions.create(
             model="gpt-4o-mini",
-            messages=[{"role": "user", "content": f"Respond in '{lang}' language: {user_text}"}],
+            messages=messages,
         )
         reply = response.choices[0].message.content
         if reply:
+            # إضافة رد البوت للسجل ليتذكره في السؤال القادم
+            user_histories[user_id].append({"role": "assistant", "content": reply})
             await update.message.reply_text(reply)
         else:
             await update.message.reply_text("⚠️ No response generated.")
