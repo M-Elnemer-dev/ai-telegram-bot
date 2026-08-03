@@ -143,8 +143,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⚠️ GEMINI_API_KEY is missing in Railway variables.")
         return
 
-    # Try models supported by google-genai library
-    models_to_try = ['gemini-2.5-flash', 'gemini-2.0-flash']
+    # أسماء الموديلات الصحيحة المتاحة للـ API
+    models_to_try = ['gemini-2.5-flash', 'gemini-1.5-flash-latest', 'gemini-1.5-pro']
     response_text = None
     last_error = None
 
